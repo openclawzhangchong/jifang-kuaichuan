@@ -5,7 +5,7 @@
 | 形态 | 原理 | 适合场景 | 入口 |
 |---|---|---|---|
 | **桌面版**（主推） | 教师机起 HTTP 服务，学生扫码/输地址 | 机房发课件、收作业，稳定高速 | `desktop/启动机房快传.bat` 双击 |
-| **网页版 P2P** | WebRTC 数据通道，邀请码握手，**无服务器中转** | 临时互传、没有教师机时 | **[GitHub Pages 在线版](https://openclawzhangchong.github.io/jifang-kuaichuan/)** |
+| **网页版 P2P** | WebRTC 数据通道，邀请码握手，**无服务器中转** | 临时互传、没有教师机时 | **[GitHub Pages 在线版](https://openclawzhangchong.github.io/jifang-kuaichuan/)**（[备用镜像](https://liminal-palm-mh8h.here.now/)） |
 
 ## 桌面版功能
 
