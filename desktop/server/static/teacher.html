@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机房快传 · 教师操作台</title>
+<style>
+  :root{--bg:#f5f7fa;--card:#fff;--ink:#1c2333;--sub:#667085;--line:#e4e8ef;--blue:#2f6bff;--ok:#12b76a;--err:#f04438;--amber:#f79009}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft YaHei UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:1000px;margin:0 auto;padding:26px 18px 70px}
+  header{display:flex;align-items:baseline;gap:10px}
+  h1{font-size:22px}
+  .sub{color:var(--sub);font-size:13px;margin:6px 0 18px}
+  .grid{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+  @media(max-width:760px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 1px 2px rgba(16,24,40,.04);margin-bottom:16px}
+  .card h2{font-size:15px;margin-bottom:12px}
+  .lan{display:flex;gap:14px;align-items:center}
+  .lan img{width:132px;height:132px;border:1px solid var(--line);border-radius:10px}
+  .url{font-family:Consolas,monospace;font-size:15px;font-weight:700;color:var(--blue);word-break:break-all}
+  .hint{color:var(--sub);font-size:12px;margin-top:6px;line-height:1.7}
+  #drop{border:2px dashed #c6cfdb;border-radius:12px;padding:26px;text-align:center;cursor:pointer;background:#fbfcfe;transition:.15s}
+  #drop.hover{border-color:var(--blue);background:#eef4ff}
+  .fitem{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
+  .fitem:last-child{border-bottom:none}
+  .fitem .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .meta{color:var(--sub);font-size:12px;white-space:nowrap}
+  button{padding:7px 14px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:var(--blue);color:#fff}
+  button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  button.danger{background:#fff;color:var(--err);border:1px solid #fecdca}
+  button.small{padding:4px 10px;font-size:12px}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tab{padding:8px 18px;border-radius:10px;background:#fff;border:1px solid var(--line);cursor:pointer;font-size:14px}
+  .tab.on{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .stugrp{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+  .stugrp .hd{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;margin-bottom:6px}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#101828;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;display:none;z-index:9}
+  .empty{color:var(--sub);font-size:13px;padding:6px 0}
+  .cnt{font-size:12px;color:var(--sub)}
+  .ok-tag{color:var(--ok);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>🏫 机房快传 · 教师操作台</h1><span class="cnt" id="ipTag"></span></header>
+  <div class="sub">教师机就是服务器。左边是学生连接入口，右边发文件、收作业。</div>
+
+  <div class="card">
+    <div class="lan">
+      <img id="qr" alt="二维码">
+      <div>
+        <div style="font-size:13px;color:var(--sub);margin-bottom:4px">学生/手机连接地址（同局域网）：</div>
+        <div class="url" id="url">加载中…</div>
+        <div class="hint">学生打开地址或手机「扫一扫」即可：<br>下载老师发的文件 / 上传作业。全流程不经过外网。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on" data-t="share">📤 发文件（教师 → 学生）</div>
+    <div class="tab" data-t="work">📥 收作业（学生 → 教师）</div>
+  </div>
+
+  <div class="card" id="shareCard">
+    <div id="drop">
+      <b>把要发给学生的文件拖到这里，或点击选择</b><br>
+      <span style="color:var(--sub);font-size:12px">可多选；课件、文档、安装包都行，学生端立即出现</span>
+      <input id="file" type="file" hidden multiple>
+    </div>
+    <div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center">
+      <span class="cnt" id="shareCnt"></span>
+      <button class="ghost" id="packShare">⬇ 全部打包下载 zip</button>
+    </div>
+    <div id="shareList" style="margin-top:6px"></div>
+  </div>
+
+  <div class="card" id="workCard" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h2 style="margin:0">学生交上来的作业（按 班级/姓名 自动归档）</h2>
+      <button class="ghost" id="packWork">⬇ 全部作业打包 zip</button>
+    </div>
+    <div id="workList"></div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+function toast(m,ok=true){const t=$("toast");t.textContent=m;t.style.display="block";t.style.background=ok?"#101828":"#b42318";setTimeout(()=>t.style.display="none",2400)}
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+
+document.querySelectorAll(".tab").forEach(tb=>tb.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));
+  tb.classList.add("on");
+  const w=tb.dataset.t==="work";
+  $("workCard").style.display=w?"block":"none";
+  $("shareCard").style.display=w?"none":"block";
+});
+
+// —— 共享文件 ——
+const drop=$("drop"),fileIn=$("file");
+drop.onclick=()=>fileIn.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add("hover")};
+drop.ondragleave=()=>drop.classList.remove("hover");
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove("hover");upFiles([...e.dataTransfer.files])};
+fileIn.onchange=()=>{upFiles([...fileIn.files]);fileIn.value=""};
+
+async function upFiles(files){
+  if(!files.length)return;
+  const fd=new FormData();
+  files.forEach(f=>fd.append("files",f));
+  const r=await fetch("/api/share/upload",{method:"POST",body:fd});
+  const j=await r.json();
+  if(j.failed&&j.failed.length)toast("部分失败："+j.failed.join("; "),false);
+  else toast("已发出 "+j.ok.length+" 个文件，学生端立即可见");
+  render(j.share);
+}
+
+async function delShare(name){
+  const r=await fetch("/api/share/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})});
+  render((await r.json()).share);
+}
+
+function render(share){
+  $("shareCnt").textContent=share.length?("共 "+share.length+" 个文件，学生已可见"):"还没有发文件";
+  $("shareList").innerHTML=share.length?share.map(f=>`
+    <div class="fitem">
+      <span class="nm">${esc(f.name)}</span>
+      <span class="meta">${f.size_h} · ${f.mtime}</span>
+      <a href="/api/share/download/${encodeURIComponent(f.name)}"><button class="ghost small">下载</button></a>
+      <button class="danger small" onclick="delShare('${esc(f.name).replace(/'/g,"\\'")}')">撤回</button>
+    </div>`).join(""):'<div class="empty">空空如也，拖个文件试试。</div>';
+}
+
+$("packShare").onclick=()=>location.href="/api/share/pack";
+
+// —— 收作业 ——
+function renderWork(tree){
+  if(!tree.length){$("workList").innerHTML='<div class="empty">还没有学生交作业。让学生打开上方网址 → 「交作业」。</div>';return}
+  let n=0;
+  $("workList").innerHTML=tree.map(c=>c.students.map(s=>{
+    n+=s.files.length;
+    return `<div class="stugrp">
+      <div class="hd"><span>${esc(c.cls)} · ${esc(s.student)} <span class="ok-tag">${s.files.length}个文件</span></span>
+      <button class="danger small" onclick="delStu('${esc(c.cls).replace(/'/g,"\\'")}','${esc(s.student).replace(/'/g,"\\'")}')">清空该生</button></div>
+      ${s.files.map(f=>`<div class="fitem"><span class="nm">${esc(f.name)}</span><span class="meta">${f.size_h} · ${f.mtime}</span>
+        <a href="/api/work/download/${encodeURIComponent(c.cls)}/${encodeURIComponent(s.student)}/${encodeURIComponent(f.name)}"><button class="ghost small">下载</button></a></div>`).join("")}
+    </div>`}).join("")).join("");
+  $("packWork").textContent=`⬇ 全部作业打包 zip（${n}个文件）`;
+}
+function delStu(cls,stu){
+  if(!confirm("确认清空 "+cls+" / "+stu+" 的全部作业？"))return;
+  fetch("/api/work/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({cls,student:stu})}).then(r=>r.json()).then(j=>renderWork(j.work));
+}
+$("packWork").onclick=()=>location.href="/api/work/pack";
+
+async function refresh(){
+  const info=await (await fetch("/api/info")).json();
+  $("url").textContent=info.url+"/student";
+  $("ipTag").textContent="教师机 LAN："+info.url;
+  $("qr").src=info.qrcode||"";
+  render(info.share);renderWork(info.work);
+}
+refresh();
+setInterval(refresh,5000);
+</script>
+</body>
+</html>

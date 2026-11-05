@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>机房快传 · 学生端</title>
+<style>
+  :root{--bg:#f5f7fa;--card:#fff;--ink:#1c2333;--sub:#667085;--line:#e4e8ef;--blue:#2f6bff;--ok:#12b76a;--err:#f04438}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft YaHei UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:640px;margin:0 auto;padding:24px 16px 60px}
+  h1{font-size:20px;margin-bottom:4px}
+  .sub{color:var(--sub);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:0 1px 2px rgba(16,24,40,.04);margin-bottom:14px}
+  .card h2{font-size:15px;margin-bottom:10px}
+  .fitem{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:14px}
+  .fitem:last-child{border-bottom:none}
+  .fitem .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .meta{color:var(--sub);font-size:12px;white-space:nowrap}
+  a.dl{background:var(--blue);color:#fff;text-decoration:none;padding:6px 14px;border-radius:8px;font-size:13px;white-space:nowrap}
+  button{padding:6px 14px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:var(--blue);color:#fff}
+  button.big{width:100%;padding:12px;font-size:15px}
+  #drop{border:2px dashed #c6cfdb;border-radius:12px;padding:26px;text-align:center;cursor:pointer;background:#fbfcfe}
+  #drop.hover{border-color:var(--blue);background:#eef4ff}
+  input{padding:10px;border:1px solid var(--line);border-radius:9px;font-size:14px;width:100%;font-family:inherit}
+  label{font-size:13px;color:var(--sub);display:block;margin:8px 0 4px}
+  .empty{color:var(--sub);font-size:13px}
+  #prog{height:8px;background:#eef0f5;border-radius:99px;overflow:hidden;margin-top:10px;display:none}
+  #progIn{height:100%;width:0;background:var(--blue);transition:width .2s}
+  #done{color:var(--ok);font-size:13px;margin-top:8px;display:none}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#101828;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;display:none;z-index:9}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📱 机房快传 · 学生端</h1>
+  <div class="sub">下载老师发的文件 ⇩ / 上传自己的作业 ⇧，都在这一页。</div>
+
+  <div class="card">
+    <h2>① 老师发的文件（点击即可下载）</h2>
+    <div id="shareList"><div class="empty">加载中…</div></div>
+    <button class="ghost big" id="packAll" style="background:#fff;border:1px solid var(--line);margin-top:8px">⬇ 全部打包下载</button>
+  </div>
+
+  <div class="card">
+    <h2>② 交作业（自动按 班级/姓名 归档）</h2>
+    <label>班级（如：24级3班）</label>
+    <input id="cls" placeholder="填写班级">
+    <label>姓名</label>
+    <input id="stu" placeholder="填写姓名">
+    <div style="height:10px"></div>
+    <div id="drop">
+      <b>点这里选择要交的文件（可多选）</b><br>
+      <span style="color:var(--sub);font-size:12px">作业、图片、压缩包都行</span>
+      <input id="file" type="file" hidden multiple>
+    </div>
+    <div id="prog"><div id="progIn"></div></div>
+    <div id="done">✅ 交好了！老师端马上能看到。</div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+function toast(m,ok=true){const t=$("toast");t.textContent=m;t.style.display="block";t.style.background=ok?"#101828":"#b42318";setTimeout(()=>t.style.display="none",2400)}
+
+function render(share){
+  const el=$("shareList");
+  el.innerHTML=share.length?share.map(f=>`
+    <div class="fitem"><span class="nm">${esc(f.name)}</span><span class="meta">${f.size_h}</span>
+    <a class="dl" href="/api/share/download/${encodeURIComponent(f.name)}">下载</a></div>`).join("")
+    :'<div class="empty">老师还没发文件，等一下再刷新。</div>';
+}
+$("packAll").onclick=()=>location.href="/api/share/pack";
+
+const drop=$("drop"),fileIn=$("file");
+drop.onclick=()=>fileIn.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add("hover")};
+drop.ondragleave=()=>drop.classList.remove("hover");
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove("hover");up([...e.dataTransfer.files])};
+fileIn.onchange=()=>{up([...fileIn.files]);fileIn.value=""};
+
+function up(files){
+  const cls=$("cls").value.trim(),stu=$("stu").value.trim();
+  if(!stu){toast("请先填姓名",false);$("stu").focus();return}
+  if(!files.length){toast("请先选择文件",false);return}
+  const fd=new FormData();
+  fd.append("cls",cls||"未填班级");fd.append("student",stu);
+  files.forEach(f=>fd.append("files",f));
+  $("prog").style.display="block";
+  const xhr=new XMLHttpRequest();
+  xhr.open("POST","/api/work/upload");
+  xhr.upload.onprogress=e=>{if(e.lengthComputable)$("progIn").style.width=(e.loaded/e.total*100)+"%"};
+  xhr.onload=()=>{
+    $("prog").style.display="none";$("progIn").style.width="0";
+    try{const j=JSON.parse(xhr.responseText);
+      if(j.ok&&j.ok.length){$("done").style.display="block";toast("上传成功："+j.ok.length+" 个文件");setTimeout(()=>$("done").style.display="none",4000)}
+      else toast("上传失败："+(j.failed||[]).join(";"),false);
+    }catch(e){toast("上传失败",false)}
+  };
+  xhr.onerror=()=>{$("prog").style.display="none";toast("网络错误，确认连的是机房网络",false)};
+  xhr.send(fd);
+}
+
+async function refresh(){
+  const info=await (await fetch("/api/info")).json();
+  render(info.share);
+}
+refresh();
+setInterval(refresh,4000);
+</script>
+</body>
+</html>

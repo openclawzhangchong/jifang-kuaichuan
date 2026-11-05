@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>快传 P2P · 网页版（点对点，无服务器中转）</title>
+<style>
+  :root{--bg:#f5f7fa;--card:#fff;--ink:#1c2333;--sub:#667085;--line:#e4e8ef;--blue:#2f6bff;--ok:#12b76a;--err:#f04438;--amber:#f79009}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Microsoft YaHei UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  .wrap{max-width:760px;margin:0 auto;padding:26px 18px 70px}
+  header h1{font-size:22px}
+  .sub{color:var(--sub);font-size:13px;margin:6px 0 18px;line-height:1.8}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .card h2{font-size:15px;margin-bottom:12px}
+  .roles{display:flex;gap:12px}
+  .role{flex:1;border:2px solid var(--line);border-radius:12px;padding:18px;text-align:center;cursor:pointer;font-size:15px;font-weight:600}
+  .role.on{border-color:var(--blue);background:#eef4ff;color:var(--blue)}
+  .role small{display:block;color:var(--sub);font-weight:400;margin-top:4px;font-size:12px}
+  textarea{width:100%;min-height:110px;padding:10px;border:1px solid var(--line);border-radius:10px;font-size:12px;font-family:Consolas,monospace;resize:vertical;word-break:break-all}
+  button{padding:8px 16px;border:none;border-radius:8px;font-size:14px;cursor:pointer;background:var(--blue);color:#fff}
+  button.ghost{background:#fff;color:var(--ink);border:1px solid var(--line)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .step{color:var(--sub);font-size:13px;margin:10px 0 6px;font-weight:600}
+  #drop{border:2px dashed #c6cfdb;border-radius:12px;padding:24px;text-align:center;cursor:pointer;background:#fbfcfe}
+  #drop.hover{border-color:var(--blue);background:#eef4ff}
+  .fitem{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:13px}
+  .fitem:last-child{border-bottom:none}
+  .fitem .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .pbar{height:6px;background:#eef0f5;border-radius:99px;overflow:hidden;margin-top:4px}
+  .pbarIn{height:100%;width:0;background:var(--blue);transition:width .2s}
+  .meta{color:var(--sub);font-size:12px;white-space:nowrap}
+  .st{font-size:13px;padding:6px 12px;border-radius:8px;display:inline-block}
+  .st.wait{background:#fff7e6;color:var(--amber)}
+  .st.ok{background:#e8f8f0;color:var(--ok)}
+  .st.bad{background:#fee4e2;color:var(--err)}
+  a.dl{background:var(--blue);color:#fff;text-decoration:none;padding:6px 14px;border-radius:8px;font-size:13px;white-space:nowrap}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#101828;color:#fff;padding:10px 18px;border-radius:10px;font-size:13px;display:none;z-index:9}
+  .muted{color:var(--sub);font-size:12px;line-height:1.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>⚡ 快传 P2P</h1></header>
+  <div class="sub">网页版点对点传输：<b>文件直接从一台设备到另一台设备</b>，不经过任何服务器。
+  双方互换两段「邀请码/应答码」即可建立通道。同一机房局域网内速度最快；跨网络需能打通 NAT（多数家庭/办公网络可以）。</div>
+
+  <div class="card">
+    <div class="roles">
+      <div class="role on" id="roleSend" onclick="setRole('send')">我是发送方<small>选文件 → 生成邀请码 → 等对方应答</small></div>
+      <div class="role" id="roleRecv" onclick="setRole('recv')">我是接收方<small>贴邀请码 → 回应答码 → 收文件</small></div>
+    </div>
+  </div>
+
+  <div class="card" id="cardSend" style="display:none">
+    <h2>发送方</h2>
+    <div class="step">第 1 步 · 选好文件后生成邀请码</div>
+    <div id="drop"><b>点这里选择要发送的文件</b><input id="file" type="file" hidden multiple></div>
+    <div style="margin:10px 0"><button id="genOffer" disabled>生成邀请码</button></div>
+    <textarea id="offerOut" readonly placeholder="邀请码会出现在这里，复制后发给对方"></textarea>
+    <div style="margin:8px 0"><button id="copyOffer" class="ghost">复制邀请码</button></div>
+    <div class="step">第 2 步 · 把对方的应答码粘贴到这里</div>
+    <textarea id="answerIn" placeholder="粘贴对方的应答码"></textarea>
+    <div style="margin:8px 0"><button id="acceptAnswer">接受应答码并连接</button>
+      <span class="st wait" id="connState" style="margin-left:10px">未连接</span></div>
+    <div class="step">第 3 步 · 连接后自动开始发送</div>
+    <div id="sendList"></div>
+  </div>
+
+  <div class="card" id="cardRecv" style="display:none">
+    <h2>接收方</h2>
+    <div class="step">第 1 步 · 粘贴对方的邀请码</div>
+    <textarea id="offerIn" placeholder="粘贴对方的邀请码"></textarea>
+    <div style="margin:8px 0"><button id="makeAnswer">生成应答码</button></div>
+    <div class="step">第 2 步 · 把自己的应答码复制回给对方</div>
+    <textarea id="answerOut" readonly placeholder="应答码会出现在这里"></textarea>
+    <div style="margin:8px 0"><button id="copyAnswer" class="ghost">复制应答码</button>
+      <span class="st wait" id="connState2" style="margin-left:10px">未连接</span></div>
+    <div class="step">第 3 步 · 等待接收文件</div>
+    <div id="recvList"></div>
+  </div>
+
+  <div class="card">
+    <div class="muted">隐私说明：文件内容走 WebRTC 数据通道（DTLS 加密），服务器只在你打开本页面时提供了一次网页文件本身，
+    不参与文件传输。<br>若连接一直「连接中」：换一个网络试试（部分对称 NAT 无法直连），或回到机房用桌面版（局域网 HTTP 直传，更稳）。</div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const $=id=>document.getElementById(id);
+function toast(m,ok=true){const t=$("toast");t.textContent=m;t.style.display="block";t.style.background=ok?"#101828":"#b42318";setTimeout(()=>t.style.display="none",2600)}
+function fmt(n){n=parseFloat(n);for(const u of["B","KB","MB","GB"]){if(n<1024||u==="GB")return u==="B"?`${n|0} B`:`${n.toFixed(1)} ${u}`;n/=1024}}
+
+let role="send", pc=null, dc=null, files=[], sendIdx=0, sending=false;
+let incoming=null, received=0;
+
+function setRole(r){
+  role=r;
+  $("roleSend").classList.toggle("on",r==="send");
+  $("roleRecv").classList.toggle("on",r==="recv");
+  $("cardSend").style.display=r==="send"?"block":"none";
+  $("cardRecv").style.display=r==="recv"?"block":"none";
+}
+setRole("send");
+
+const ICE={iceServers:[{urls:["stun:stun.cloudflare.com:3478","stun:stun.l.google.com:19302"]}]};
+
+function enc(desc){return "GNK1."+btoa(unescape(encodeURIComponent(JSON.stringify(desc))))}
+function dec(text){
+  text=text.trim();
+  if(!text.startsWith("GNK1."))throw new Error("不是有效的码（应以 GNK1. 开头）");
+  return JSON.parse(decodeURIComponent(escape(atob(text.slice(5)))));
+}
+function waitIce(pc){
+  return new Promise(res=>{
+    if(pc.iceGatheringState==="complete")return res();
+    const t=setTimeout(res,4000);
+    pc.addEventListener("icegatheringstatechange",()=>{ if(pc.iceGatheringState==="complete"){clearTimeout(t);res()} });
+  });
+}
+function setState(el,cls,txt){el.className="st "+cls;el.textContent=txt}
+function connStates(){
+  const s=pc?pc.connectionState:"new";
+  const txt={new:"生成中…",connecting:"连接中…",connected:"已连接 ✅",disconnected:"断开",failed:"连接失败（NAT 无法直连）",closed:"已关闭"}[s]||s;
+  setState($("connState"),s==="connected"?"ok":(s==="failed"?"bad":"wait"),txt);
+  setState($("connState2"),s==="connected"?"ok":(s==="failed"?"bad":"wait"),txt);
+}
+
+function newPC(){
+  pc=new RTCPeerConnection(ICE);
+  pc.onconnectionstatechange=connStates;
+  return pc;
+}
+
+/* ---------- 发送方 ---------- */
+$("drop").onclick=()=>$("file").click();
+$("file").onchange=e=>{files=[...e.target.files];renderSendList();$("genOffer").disabled=!files.length};
+function renderSendList(){
+  $("sendList").innerHTML=files.map((f,i)=>`<div class="fitem"><span class="nm">${esc(f.name)}</span>
+    <span class="meta">${fmt(f.size)}</span><span class="meta" id="sp${i}">等待</span>
+    <div class="pbar" style="flex:1"><div class="pbarIn" id="spbar${i}"></div></div></div>`).join("");
+}
+$("genOffer").onclick=async()=>{
+  try{
+    pc=newPC();
+    dc=pc.createDataChannel("file");
+    dc.binaryType="array";
+    dc.onopen=()=>{connStates();toast("通道已建立，开始发送");sendAll()};
+    wireSenderChannel();
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitIce(pc);
+    $("offerOut").value=enc({type:"offer",sdp:pc.localDescription});
+    $("genOffer").disabled=true;
+    connStates();
+  }catch(e){toast("生成失败："+e.message,false)}
+};
+$("copyOffer").onclick=()=>{navigator.clipboard.writeText($("offerOut").value).then(()=>toast("邀请码已复制"))};
+$("acceptAnswer").onclick=async()=>{
+  try{
+    const ans=dec($("answerIn").value);
+    if(ans.type!=="answer")throw new Error("这不是应答码");
+    await pc.setRemoteDescription({type:"answer",sdp:ans.sdp});
+    connStates();
+  }catch(e){toast(e.message,false)}
+};
+function wireSenderChannel(){ /* 流控回调在 drain() 中按需注册 */ }
+let offset=0;
+async function drain(){
+  const HIGH=8*1024*1024;
+  while(dc.bufferedAmount>HIGH && dc.readyState==="open"){
+    await new Promise(r=>{ dc.onbufferedamountlow=()=>{dc.onbufferedamountlow=null;r()} });
+  }
+}
+async function pump(){
+  const f=files[sendIdx];
+  if(!f)return false;
+  const CHUNK=65536;
+  while(offset<f.size){
+    if(dc.readyState!=="open")return false;
+    await drain();
+    if(dc.readyState!=="open")return false;
+    const end=Math.min(offset+CHUNK,f.size);
+    const chunk=await f.slice(offset,end).arrayBuffer();
+    try{ dc.send(chunk); }catch(e){ return false; }
+    offset=end;
+    const p=Math.round(offset/f.size*100);
+    $("spbar"+sendIdx).style.width=p+"%";
+    $("sp"+sendIdx).textContent=p+"%";
+  }
+  return true;
+}
+async function sendAll(){
+  if(sending)return;
+  sending=true;
+  for(sendIdx=0;sendIdx<files.length;sendIdx++){
+    const f=files[sendIdx];
+    offset=0;
+    dc.send(JSON.stringify({t:"meta",name:f.name,size:f.size}));
+    const ok=await pump();
+    dc.send(JSON.stringify({t:"done",name:f.name}));
+    $("sp"+sendIdx).textContent=ok?"完成 ✅":"中断";
+    if(!ok){sending=false;toast("连接中断，发送停止",false);return}
+    await new Promise(r=>setTimeout(r,120));
+  }
+  sending=false;
+  toast("全部发送完毕");
+}
+
+/* ---------- 接收方 ---------- */
+$("makeAnswer").onclick=async()=>{
+  try{
+    const off=dec($("offerIn").value);
+    if(off.type!=="offer")throw new Error("这不是邀请码");
+    pc=newPC();
+    pc.ondatachannel=e=>{
+      dc=e.channel;dc.binaryType="array";
+      dc.onopen=()=>connStates();
+      wireReceiverChannel();
+    };
+    await pc.setRemoteDescription({type:"offer",sdp:off.sdp});
+    await pc.setLocalDescription(await pc.createAnswer());
+    await waitIce(pc);
+    $("answerOut").value=enc({type:"answer",sdp:pc.localDescription});
+    connStates();
+    toast("应答码已生成，复制回给对方");
+  }catch(e){toast(e.message,false)}
+};
+$("copyAnswer").onclick=()=>{navigator.clipboard.writeText($("answerOut").value).then(()=>toast("应答码已复制"))};
+
+function wireReceiverChannel(){
+  dc.onmessage=async ev=>{
+    if(typeof ev.data==="string"){
+      const m=JSON.parse(ev.data);
+      if(m.t==="meta"){ incoming={name:m.name,size:m.size,parts:[]};received=0;addRecvCard(m.name,m.size) }
+      else if(m.t==="done"&&incoming){ finishIncoming() }
+    }else{
+      if(!incoming)return;
+      const buf=ev.data instanceof ArrayBuffer?new Uint8Array(ev.data):ev.data;
+      incoming.parts.push(buf);received+=buf.byteLength;
+      const p=Math.round(received/incoming.size*100);
+      const bar=$("rpbar");if(bar)bar.style.width=p+"%";
+      const txt=$("rtxt");if(txt)txt.textContent=p+"%";
+    }
+  };
+}
+function addRecvCard(name,size){
+  $("recvList").insertAdjacentHTML("afterbegin",
+    `<div class="fitem"><span class="nm">${esc(name)}</span><span class="meta">${fmt(size)} · <span id="rtxt">0%</span></span>
+     <span id="rdl"></span><div class="pbar" style="flex:1"><div class="pbarIn" id="rpbar"></div></div></div>`);
+}
+function finishIncoming(){
+  const blob=new Blob(incoming.parts);
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=incoming.name;a.textContent="保存";
+  a.className="dl";
+  const slot=$("rdl");if(slot){slot.innerHTML="";slot.appendChild(a)}
+  if($("rpbar"))$("rpbar").style.width="100%";
+  if($("rtxt"))$("rtxt").textContent="完成 ✅";
+  toast("收到文件："+incoming.name);
+  incoming=null;received=0;
+}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+</script>
+</body>
+</html>
