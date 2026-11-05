@@ -1,5 +1,9 @@
 # ⚡ 机房快传
 
+[![Deploy Pages](https://github.com/openclawzhangchong/jifang-kuaichuan/actions/workflows/pages.yml/badge.svg)](https://github.com/openclawzhangchong/jifang-kuaichuan/actions/workflows/pages.yml)
+
+📄 **文档**：[开发手册](docs/DEVELOPMENT.md)（架构 / 数据契约 / 测试 / 二次开发指南）· [更新日志](CHANGELOG.md)
+
 教师机 ↔ 学生机/手机 的文件互传工具，机房场景专用。**三种形态**：
 
 | 形态 | 原理 | 适合场景 | 入口 |
