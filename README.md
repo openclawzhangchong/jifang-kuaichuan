@@ -7,6 +7,20 @@
 | **桌面版**（主推） | 教师机起 HTTP 服务，学生扫码/输地址 | 机房发课件、收作业，稳定高速 | `desktop/启动机房快传.bat` 双击 |
 | **网页版 P2P** | WebRTC 数据通道，邀请码握手，**无服务器中转** | 临时互传、没有教师机时 | **[GitHub Pages 在线版](https://openclawzhangchong.github.io/jifang-kuaichuan/)**（[备用镜像](https://soulful-nutmeg-mdx6.here.now/)） |
 
+## 界面预览
+
+**桌面版 · 教师操作台**（自动生成局域网二维码，发文件/收作业一键切换）：
+
+![教师操作台](docs/screenshots/teacher-console.png)
+
+**学生端（手机视口）**：
+
+![学生端](docs/screenshots/student-mobile.png)
+
+**网页版 P2P**（无服务器点对点，邀请码握手）：
+
+![网页版P2P](docs/screenshots/web-p2p.png)
+
 ## 桌面版功能
 
 - **发文件**（教师 → 学生）：拖入即全班可见，单个下载或全部打包 zip，可撤回
