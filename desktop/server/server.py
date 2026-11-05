@@ -48,10 +48,24 @@ app = Flask(__name__, static_folder="static", template_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 4 * 1024 * 1024 * 1024  # 4GB
 
 
+_RESERVED = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$", re.I)
+
+
 def safe_name(name: str) -> str:
+    """清洗文件/目录名：剥路径分隔符、去首尾点号（阻断 .. 穿越）、拦 Windows 保留设备名。"""
     name = os.path.basename(name or "")
-    cleaned = re.sub(r'[\\/:*?"<>|\r\n]+', "_", name).strip()
+    cleaned = re.sub(r'[\\/:*?"<>|\r\n]+', "_", name).strip().strip(".")
+    if not cleaned or _RESERVED.match(cleaned):
+        cleaned = "_" + (cleaned or "file")
     return cleaned or "file.txt"
+
+
+def contained(base: Path, p: Path) -> bool:
+    """路径容器校验：拼接后的最终路径必须仍在 base 内（防御纵深）。"""
+    try:
+        return os.path.commonpath([str(base.resolve()), str(p.resolve())]) == str(base.resolve())
+    except ValueError:
+        return False
 
 
 def lan_ip() -> str:
@@ -157,8 +171,9 @@ def api_share_upload():
         if not f.filename:
             continue
         try:
-            f.save(str(SHARE_DIR / safe_name(f.filename)))
-            ok.append(f.filename)
+            saved = safe_name(f.filename)
+            f.save(str(SHARE_DIR / saved))
+            ok.append(saved)
         except Exception as e:
             failed.append(f"{f.filename}: {e}")
     return jsonify({"ok": ok, "failed": failed, "share": list_share()})
@@ -167,7 +182,7 @@ def api_share_upload():
 @app.get("/api/share/download/<path:name>")
 def api_share_download(name):
     p = SHARE_DIR / safe_name(name)
-    if not p.is_file():
+    if not contained(SHARE_DIR, p) or not p.is_file():
         abort(404)
     return send_file(str(p), as_attachment=True, download_name=p.name)
 
@@ -207,8 +222,9 @@ def api_work_upload():
         if not f.filename:
             continue
         try:
-            f.save(str(dest / safe_name(f.filename)))
-            ok.append(f.filename)
+            saved = safe_name(f.filename)
+            f.save(str(dest / saved))
+            ok.append(saved)
         except Exception as e:
             failed.append(f"{f.filename}: {e}")
     return jsonify({"ok": ok, "failed": failed})
@@ -217,7 +233,7 @@ def api_work_upload():
 @app.get("/api/work/download/<path:cls>/<path:student>/<path:name>")
 def api_work_download(cls, student, name):
     p = WORK_DIR / safe_name(cls) / safe_name(student) / safe_name(name)
-    if not p.is_file():
+    if not contained(WORK_DIR, p) or not p.is_file():
         abort(404)
     return send_file(str(p), as_attachment=True, download_name=p.name)
 
@@ -226,11 +242,13 @@ def api_work_download(cls, student, name):
 def api_work_delete():
     d = request.get_json(force=True)
     p = WORK_DIR / safe_name(d.get("cls", "")) / safe_name(d.get("student", ""))
+    if not contained(WORK_DIR, p):
+        return jsonify({"error": "非法路径"}), 400
     if d.get("name"):
         f = p / safe_name(d["name"])
         if f.is_file():
             f.unlink()
-    elif p.is_dir():
+    elif p.is_dir() and contained(WORK_DIR, p):
         import shutil
         shutil.rmtree(str(p), ignore_errors=True)
     return jsonify({"ok": True, "work": list_work()})

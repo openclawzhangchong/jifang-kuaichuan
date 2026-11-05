@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>快传 P2P 自测</title></head>
+<body>
+<h3>WebRTC 回环自测（自动运行）</h3>
+<pre id="out">运行中…</pre>
+<script>
+// 同页两条 RTCPeerConnection 模拟 发送方/接收方，走与 index.html 相同的分块协议，
+// 传 2MB 随机数据并比对 SHA-256。纯自动，无文件选择、无交互。
+const out = document.getElementById("out");
+const log = [];
+function p(s){ log.push(s); out.textContent = log.join("\n"); }
+
+(async () => {
+  try {
+    const SIZE = 2 * 1024 * 1024;
+    const data = new Uint8Array(SIZE);
+    for (let i = 0; i < SIZE; i += 65536) crypto.getRandomValues(data.subarray(i, Math.min(i + 65536, SIZE)));
+    const hash = await crypto.subtle.digest("SHA-256", data);
+    const hex = [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2, "0")).join("");
+    p("生成 2MB 测试数据，SHA-256=" + hex.slice(0, 16) + "…");
+
+    const ICE = { iceServers: [{ urls: ["stun:stun.cloudflare.com:3478"] }] };
+    const A = new RTCPeerConnection(ICE), B = new RTCPeerConnection(ICE);
+    A.onicecandidate = e => e.candidate && B.addIceCandidate(e.candidate);
+    B.onicecandidate = e => e.candidate && A.addIceCandidate(e.candidate);
+
+    const dcA = A.createDataChannel("file");
+    dcA.binaryType = "array";
+    let dcB = null;
+    const chanOpen = new Promise(res => { B.ondatachannel = e => { dcB = e.channel; dcB.binaryType = "array"; res(); }; });
+
+    const offer = await A.createOffer();
+    await A.setLocalDescription(offer);
+    await B.setRemoteDescription(offer);
+    const answer = await B.createAnswer();
+    await B.setLocalDescription(answer);
+    await A.setRemoteDescription(answer);
+    p("SDP 握手完成，等待 ICE 打通…");
+
+    await chanOpen;
+    await new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error("ICE 连接超时 12s")), 12000);
+      const ok = () => { clearTimeout(t); res(); };
+      if (dcA.readyState === "open" && dcB.readyState === "open") ok();
+      dcA.onopen = ok; dcB.onopen = ok;
+    });
+    p("数据通道已建立（" + (A.connectionState) + "）");
+
+    // 接收方收集
+    const parts = [];
+    let received = 0, meta = null, doneFlag = false;
+    const donePromise = new Promise((res, rej) => {
+      const t = setTimeout(() => rej(new Error("接收超时 15s")), 15000);
+      dcB.onmessage = ev => {
+        if (typeof ev.data === "string") {
+          const m = JSON.parse(ev.data);
+          if (m.t === "meta") meta = m;
+          if (m.t === "done") { clearTimeout(t); doneFlag = true; res(); }
+        } else {
+          parts.push(ev.data instanceof ArrayBuffer ? new Uint8Array(ev.data) : ev.data);
+          received += ev.data.byteLength || ev.data.size;
+          p("已接收 " + received + "/" + (meta ? meta.size : "?") + " 字节");
+        }
+      };
+    });
+
+    // 发送方：meta → 分块 → done（与 index.html 相同协议，含流控）
+    const t0 = performance.now();
+    dcA.send(JSON.stringify({ t: "meta", name: "selftest.bin", size: SIZE }));
+    const CHUNK = 65536;
+    for (let off = 0; off < SIZE; off += CHUNK) {
+      while (dcA.bufferedAmount > 4 * 1024 * 1024) {
+        await new Promise(r => { dcA.onbufferedamountlow = () => { dcA.onbufferedamountlow = null; r(); }; });
+      }
+      dcA.send(data.slice(off, Math.min(off + CHUNK, SIZE)));
+    }
+    dcA.send(JSON.stringify({ t: "done", name: "selftest.bin" }));
+    await donePromise;
+    const dt = (performance.now() - t0) / 1000;
+    p("传输完成，用时 " + dt.toFixed(2) + "s（" + (SIZE / 1024 / dt).toFixed(0) + " KB/s）");
+
+    // 校验
+    const blob = new Blob(parts);
+    const buf = await blob.arrayBuffer();
+    const rxHash = await crypto.subtle.digest("SHA-256", buf);
+    const rxHex = [...new Uint8Array(rxHash)].map(b => b.toString(16).padStart(2, "0")).join("");
+    const ok = rxHex === hex && received === SIZE && doneFlag;
+    p("接收哈希=" + rxHex.slice(0, 16) + "…");
+    p(ok ? "SELFTEST PASS ✔ 字节级一致" : "SELFTEST FAIL ✘ 哈希不一致");
+    p("RESULT:" + (ok ? "PASS" : "FAIL"));
+  } catch (e) {
+    p("SELFTEST FAIL ✘ " + (e.message || e));
+    p("RESULT:FAIL");
+  }
+})();
+</script>
+</body>
+</html>
